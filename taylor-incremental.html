@@ -32,6 +32,9 @@
 	display: block;
 	content: "";
 }
+#pastUpgrades {
+	margin-top: 1em;
+}
 .hidden {
 	display: none;
 }
@@ -41,6 +44,7 @@
 <div id="production"></div>
 <div><span id="buildings"></span><button id="buyBuilding" onclick="buyBuilding()">Buy</button><button id="buyBuildingMax" class="hidden" onclick="buyBuildingMax()">Buy Max</button></div>
 <div><span id="nextUpgrade"></span><button id="buyUpgrade" onclick="buyUpgrade()">Buy</button></div>
+<div id="pastUpgrades"></div>
 <script>
 var money = 0;
 var buildings = 1;
@@ -62,8 +66,6 @@ function formatNumber(f) {
 
 function formatPercent(f) {
 	if(f == 0) return "0%";
-	if(f >= 1e6) return "×"+f.toExponential(2);
-	if(f >= 1e3) return "×"+f.toFixed(0);
 	if(f >= 1) return (f * 100).toFixed(0) + "%";
 	if(f >= 0.01) return (+(f * 100).toFixed(2)).toString() + "%";
 	return (f * 100).toPrecision(3) + "%"
@@ -83,6 +85,16 @@ function upgradeText(i) {
 	var rateDisplay = formatPercent(rate);
 	var totalDisplay = formatPercent(rate * buildings);
 	return "Increase the production of buildings by "+rateDisplay+" for every building. ("+totalDisplay+")";
+}
+
+function upgradeName(i) {
+	var sizes = ["Village", "Town", "City", "Kingdom", "Empire"];
+	var animals = ["Cat", "Goat", "Pig", "Camel", "Chicken"];
+	var moods = ["Pet", "Angry", "Tired", "Refugee", "Allied"];
+	if(i < 6) return "Mining "+sizes[(i - 1) % 5];
+	if(i < 31) return sizes[Math.floor((i-6) / 5)]+" of "+animals[(i - 6) % 5]+"s";
+	if(i < 656) return animals[Math.floor((i-31) / 5) % 5]+" "+sizes[Math.floor((i-31) / 25) % 5]+" with "+moods[Math.floor((i-31) / 125) % 5]+" "+animals[(i - 30 + Math.floor((i-31) / 5)) % 5]+"s";
+	return animals[Math.floor((i-31) / 5) % 5]+" "+sizes[Math.floor((i-31) / 25) % 5]+" with "+moods[Math.floor((i-31) / 125) % 5]+" "+animals[(i - 30 + Math.floor((i-31) / 25)) % 5]+"s "+"I".repeat(Math.floor((i - 31) / 625)+1);
 }
 
 var productionRate = buildings;
@@ -140,8 +152,18 @@ function redraw() {
 	display("#buildings", formatNumber(buildings));
 	display("#buyBuilding", "Buy for "+formatNumber(buildingCost())+" gold");
 	display("#production", formatNumber(productionRate));
-	display("#nextUpgrade", upgradeText(upgrades+1));
+	display("#nextUpgrade", upgradeName(upgrades+1)+": "+upgradeText(upgrades+1));
 	display("#buyUpgrade", "Buy for "+formatNumber(upgradeCost())+" gold");
+
+	var upgradeBoxes = document.querySelectorAll("#pastUpgrades > div");
+	for(var i = 1; i <= upgrades; i++) {
+		var box = upgradeBoxes[i - 1];
+		if(typeof box === "undefined") {
+			box = document.createElement("div");
+			document.getElementById("pastUpgrades").appendChild(box);
+		}
+		box.innerText = upgradeName(i)+": "+upgradeText(i);
+	}
 }
 
 function buildingCost() {
