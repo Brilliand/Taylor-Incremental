@@ -1,0 +1,156 @@
+<style>
+#money:before {
+	content: "Gold: ";
+}
+#money {
+	margin-right: 1em;
+}
+#production:before {
+	content: "Gaining ";
+}
+#production:after {
+	content: " gold/s";
+}
+#buildings:before {
+	content: "Buildings: ";
+}
+#buildings {
+	margin-right: 1em;
+}
+#nextUpgrade:before {
+	display: block;
+	font-weight: bold;
+	content: "Next upgrade:";
+}
+#nextUpgrade:after {
+	display: block;
+	content: "";
+}
+</style>
+<div id="money"></div>
+<div id="production"></div>
+<div><span id="buildings"></span><button id="buyBuilding" onclick="buyBuilding()">Buy</button></div>
+<div><span id="nextUpgrade"></span><button id="buyUpgrade" onclick="buyUpgrade()">Buy</button></div>
+<script>
+var money = 0;
+var buildings = 1;
+var upgrades = 0;
+var lastUpdated = new Date().getTime();
+
+function upgradeRate(i) {
+	return 2 / (i+1);
+}
+
+function formatNumber(f) {
+	if(f == 0) return "0";
+	if(f >= 1e6) return f.toExponential(2);
+	if(f >= 100) return f.toFixed(0);
+	if(f >= 0.01) return (+f.toPrecision(3)).toString();
+	return f.toPrecision(3);
+}
+
+function formatPercent(f) {
+	if(f == 0) return "0%";
+	if(f >= 1e6) return "×"+f.toExponential(2);
+	if(f >= 1e3) return "×"+f.toFixed(0);
+	if(f >= 1) return (f * 100).toFixed(0) + "%";
+	if(f >= 0.01) return (+(f * 100).toFixed(2)).toString() + "%";
+	return (f * 100).toPrecision(3) + "%"
+}
+
+function upgradeText(i) {
+	var rate = upgradeRate(i);
+	var rateDisplay = formatPercent(rate);
+	var totalDisplay = formatPercent(rate * buildings);
+	return "Increase the production of buildings by "+rateDisplay+" for every building. ("+totalDisplay+")";
+}
+
+var productionRate = buildings;
+function refreshRate() {
+	productionRate = buildings;
+	for(var i = 1; i <= upgrades; i++) {
+		var rate = upgradeRate(i);
+		productionRate *= (1 + rate * buildings);
+	}
+}
+
+function display(path, text) {
+	document.querySelector(path).innerText = text;
+}
+
+function tooltip(path, text) {
+	document.querySelector(path).title = text;
+}
+
+setInterval(function() {
+	var now = new Date().getTime();
+	var gains = Math.floor((now - lastUpdated) * productionRate / 1000);
+	money += gains;
+	lastUpdated += gains * 1000 / productionRate;
+
+	display("#money", formatNumber(money));
+}, 100);
+
+function save() {
+	localStorage.setItem("taylor-incremental", JSON.stringify({
+		money: money,
+		buildings: buildings,
+		upgrades: upgrades,
+		lastUpdated: lastUpdated
+	}));
+}
+
+function loadSave() {
+	var savegame = localStorage.getItem("taylor-incremental");
+	if(savegame) {
+		var data = JSON.parse(savegame);
+		money = Math.max(+data.money, 0);
+		buildings = Math.max(+data.buildings, 1);
+		upgrades = Math.max(+data.upgrades, 0);
+		if(+data.lastUpdated > 1546300800000) lastUpdated = +data.lastUpdated;
+		refreshRate();
+	}
+}
+
+function redraw() {
+	display("#buildings", formatNumber(buildings));
+	display("#buyBuilding", "Buy for "+formatNumber(buildingCost())+" gold");
+	display("#production", formatNumber(productionRate));
+	display("#nextUpgrade", upgradeText(upgrades+1));
+	display("#buyUpgrade", "Buy for "+formatNumber(upgradeCost())+" gold");
+}
+
+function buildingCost() {
+	return Math.floor(10 * Math.pow(1.3, buildings - 5));
+}
+
+function upgradeCost() {
+	return Math.floor(Math.pow(100, upgrades + 1));
+}
+
+function buyBuilding() {
+	var cost = buildingCost();
+	if(money >= cost) {
+		money -= cost;
+		buildings++;
+		refreshRate();
+		redraw();
+		save();
+	}
+}
+
+function buyUpgrade() {
+	var cost = upgradeCost();
+	if(money >= cost) {
+		money -= cost;
+		upgrades++;
+		refreshRate();
+		redraw();
+		save();
+	}
+}
+
+loadSave();
+redraw();
+</script>
+
