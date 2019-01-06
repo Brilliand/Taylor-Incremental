@@ -50,7 +50,7 @@ var money = 0;
 var buildings = 1;
 var upgrades = 0;
 var lastUpdated = new Date().getTime();
-var gameTime = 0;
+var gameStarted = new Date().getTime();
 
 function upgradeRate(i) {
 	return 2 / (i+1);
@@ -115,10 +115,9 @@ setInterval(function() {
 	var gains = Math.floor((now - lastUpdated) * productionRate / 1000);
 	money += gains;
 	lastUpdated += gains * 1000 / productionRate;
-	gameTime += gains / productionRate;
 
 	display("#money", formatNumber(money));
-	display("#gameTime", formatNumber(gameTime));
+	display("#gameTime", formatTime(Math.floor((now - gameStarted) / 1000)));
 
 	if(money > buildingCost() * 100) {
 		document.querySelector("#buyBuildingMax").className = null;
@@ -131,7 +130,7 @@ function save() {
 		buildings: buildings,
 		upgrades: upgrades,
 		lastUpdated: lastUpdated,
-		gameTime: gameTime
+		gameStarted: gameStarted
 	}));
 }
 
@@ -143,7 +142,7 @@ function loadSave() {
 		buildings = Math.max(+data.buildings, 1);
 		upgrades = Math.max(+data.upgrades, 0);
 		if(+data.lastUpdated > 1546300800000) lastUpdated = +data.lastUpdated;
-		gameTime = Math.max(+data.gameTime, 0);
+		if(+data.gameStarted > 1546300800000) gameStarted = +data.gameStarted;
 		refreshRate();
 	}
 }
