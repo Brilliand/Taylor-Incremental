@@ -46,14 +46,20 @@
 <div><span id="nextUpgrade"></span><button id="buyUpgrade" onclick="buyUpgrade()">Buy</button></div>
 <div id="pastUpgrades"></div>
 <script>
-var money = 0;
 var buildings = 1;
 var upgrades = 0;
-var lastUpdated = new Date().getTime();
+var zeroMoneyTime = new Date().getTime();
 var gameStarted = new Date().getTime();
 
 function upgradeRate(i) {
 	return 2 / (i+1);
+}
+
+function formatNumberLog(f) {
+	var exponent = Math.floor(f / Math.log(10));
+	var mantissa = Math.exp(f - exponent * Math.log(10));
+	if(exponent < 6) return Math.exp(f).toFixed(0);
+	return mantissa.toFixed(2)+"e"+exponent.toFixed(0);
 }
 
 function formatNumber(f) {
@@ -97,39 +103,56 @@ function upgradeName(i) {
 	return animals[Math.floor((i-31) / 5) % 5]+" "+sizes[Math.floor((i-31) / 25) % 5]+" with "+moods[Math.floor((i-31) / 125) % 5]+" "+animals[(i - 30 + Math.floor((i-31) / 25)) % 5]+"s "+"I".repeat(Math.floor((i - 31) / 625)+1);
 }
 
-var productionRate = buildings;
+var logProductionRate = 0;
 function refreshRate() {
-	productionRate = buildings;
+	logProductionRate = Math.log(buildings);
 	for(var i = 1; i <= upgrades; i++) {
 		var rate = upgradeRate(i);
-		productionRate *= (1 + rate * buildings);
+		logProductionRate += Math.log(1 + rate * buildings);
 	}
+}
+
+function refreshRateBreakpoint() {
+	var now = new Date().getTime();
+
+	var oldRate = logProductionRate;
+	refreshRate();
+	var newRate = logProductionRate;
+
+	zeroMoneyTime = now - (now - zeroMoneyTime) * Math.exp(oldRate - newRate);
 }
 
 function display(path, text) {
 	document.querySelector(path).innerText = text;
 }
 
+function payPriceLog(priceLog) {
+	var now = new Date().getTime();
+	var timeToPay = Math.exp(priceLog - logProductionRate) * 1000;
+	if(now >= zeroMoneyTime + timeToPay) {
+		zeroMoneyTime += timeToPay;
+		return true;
+	}
+	return false;
+}
+
 setInterval(function() {
 	var now = new Date().getTime();
-	var gains = Math.floor((now - lastUpdated) * productionRate / 1000);
-	money += gains;
-	lastUpdated += gains * 1000 / productionRate;
 
-	display("#money", formatNumber(money));
+	var currentMoneyLog = Math.log((now - zeroMoneyTime) / 1000) + logProductionRate;
+	display("#money", formatNumberLog(currentMoneyLog));
 	display("#gameTime", formatTime(Math.floor((now - gameStarted) / 1000)));
 
-	if(money > buildingCost() * 100) {
+	if(currentMoneyLog > buildingCostLog() + Math.log(100)) {
 		document.querySelector("#buyBuildingMax").className = null;
 	}
 }, 100);
 
 function save() {
 	localStorage.setItem("taylor-incremental", JSON.stringify({
-		money: money,
 		buildings: buildings,
 		upgrades: upgrades,
-		lastUpdated: lastUpdated,
+		zeroMoneyTime: zeroMoneyTime,
 		gameStarted: gameStarted
 	}));
 }
@@ -138,21 +161,24 @@ function loadSave() {
 	var savegame = localStorage.getItem("taylor-incremental");
 	if(savegame) {
 		var data = JSON.parse(savegame);
-		money = Math.max(+data.money, 0);
 		buildings = Math.max(+data.buildings, 1);
 		upgrades = Math.max(+data.upgrades, 0);
-		if(+data.lastUpdated > 1546300800000) lastUpdated = +data.lastUpdated;
+		if(+data.zeroMoneyTime > 1546300800000) zeroMoneyTime = +data.zeroMoneyTime;
 		if(+data.gameStarted > 1546300800000) gameStarted = +data.gameStarted;
 		refreshRate();
+		if(+data.lastUpdated > 1546300800000) {
+			var money = Math.max(+data.money, 0);
+			zeroMoneyTime = (+data.lastUpdated) - Math.exp(Math.log(money) - logProductionRate) * 1000;
+		}
 	}
 }
 
 function redraw() {
 	display("#buildings", formatNumber(buildings));
-	display("#buyBuilding", "Buy for "+formatNumber(buildingCost())+" gold");
-	display("#production", formatNumber(productionRate));
+	display("#buyBuilding", "Buy for "+formatNumberLog(buildingCostLog())+" gold");
+	display("#production", formatNumberLog(logProductionRate));
 	display("#nextUpgrade", upgradeName(upgrades+1)+": "+upgradeText(upgrades+1));
-	display("#buyUpgrade", "Buy for "+formatNumber(upgradeCost())+" gold");
+	display("#buyUpgrade", "Buy for "+formatNumberLog(upgradeCostLog())+" gold");
 
 	var upgradeBoxes = document.querySelectorAll("#pastUpgrades > div");
 	for(var i = 1; i <= upgrades; i++) {
@@ -165,33 +191,38 @@ function redraw() {
 	}
 }
 
-function buildingCost() {
-	return Math.floor(10 * Math.pow(1.3, buildings - 5));
+function buildingCostLog() {
+	return Math.log(10) + Math.log(1.3) * (buildings - 5);
 }
 
-function upgradeCost() {
-	return Math.floor(Math.pow(100, upgrades + 1));
+function upgradeCostLog() {
+	return Math.log(100) * (upgrades + 1);
 }
 
 function buyBuilding() {
-	var cost = buildingCost();
-	if(money >= cost) {
-		money -= cost;
+	var costLog = buildingCostLog();
+	if(payPriceLog(costLog)) {
 		buildings++;
-		refreshRate();
+		refreshRateBreakpoint();
 		redraw();
 		save();
 	}
 }
 
 function buyBuildingMax() {
-	var boughtValue = (10 * Math.pow(1.3, buildings - 5)) / 0.3;
-	var canBuyTo = Math.floor(Math.log((money + boughtValue) / 10 * 0.3) / Math.log(1.3) + 5);
-	var buyPrice = Math.floor((10 * Math.pow(1.3, canBuyTo - 5)) / 0.3 - boughtValue);
+	var now = new Date().getTime();
+	var boughtValueLog = Math.log(10) + Math.log(1.3) * (buildings - 5) - Math.log(0.3);
+	var boughtMoneyTime =  Math.exp(boughtValueLog - logProductionRate) * 1000;
+	var availableMoneyLog = Math.log((now - zeroMoneyTime + boughtMoneyTime) / 1000) + logProductionRate;
+	var canBuyTo = Math.floor((availableMoneyLog - Math.log(10) + Math.log(0.3)) / Math.log(1.3) + 5);
+	var totalPriceLog = Math.log(10) + Math.log(1.3) * (canBuyTo - 5) - Math.log(0.3);
+	var totalPriceTime = Math.exp(totalPriceLog - logProductionRate) * 1000;
+	var timeToPay = totalPriceTime - boughtMoneyTime;
+
 	if(canBuyTo > buildings) {
-		money -= buyPrice;
+		zeroMoneyTime += timeToPay;
 		buildings = canBuyTo;
-		refreshRate();
+		refreshRateBreakpoint();
 		redraw();
 		save();
 	}
@@ -199,11 +230,10 @@ function buyBuildingMax() {
 }
 
 function buyUpgrade() {
-	var cost = upgradeCost();
-	if(money >= cost) {
-		money -= cost;
+	var costLog = upgradeCostLog();
+	if(payPriceLog(costLog)) {
 		upgrades++;
-		refreshRate();
+		refreshRateBreakpoint();
 		redraw();
 		save();
 	}
